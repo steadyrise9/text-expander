@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.log
+.DS_Store
+.env
+
+# Accent MVP TTS cache (generated)
+backend/data/tts_cache/
