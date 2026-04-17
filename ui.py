@@ -1,6 +1,7 @@
 """Tkinter UI for managing keyboard expander mappings with profile support."""
 
 import sys
+import subprocess
 import tkinter as tk
 from tkinter import ttk, messagebox
 import db
@@ -426,18 +427,40 @@ class ManagerWindow(tk.Tk):
 
     def _do_show_notification(self, title: str, message: str):
         """Show a transient, non-blocking toast-style notification."""
+        # Try native notification first (with sound)
+        if sys.platform == "darwin":
+            safe_title = title.replace('"', '\\"')
+            safe_msg = message.replace('"', '\\"')
+            # Try to play a sound to ensure it's noticed
+            try:
+                subprocess.run(
+                    ["osascript", "-e", f'display notification "{safe_msg}" with title "{safe_title}" sound name "Glass"'],
+                    check=False
+                )
+            except Exception:
+                pass
+
+        # Always show the Tkinter toast as a guaranteed visual fallback
         toast = tk.Toplevel(self)
         toast.overrideredirect(True)
         toast.attributes("-topmost", True)
         toast.configure(bg="#333333")
 
-        # Position at bottom right
+        # Position logic
         w = 300
         h = 80
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        x = screen_w - w - 20
-        y = screen_h - h - 60
+        
+        if sys.platform == "darwin":
+            # top right on macOS (below menu bar)
+            x = screen_w - w - 20
+            y = 40
+        else:
+            # bottom right on Windows/Linux
+            x = screen_w - w - 20
+            y = screen_h - h - 60
+            
         toast.geometry(f"{w}x{h}+{x}+{y}")
 
         inner = tk.Frame(toast, bg="#333333", highlightthickness=1, highlightbackground="#555555")
@@ -447,6 +470,10 @@ class ManagerWindow(tk.Tk):
                  anchor="w").pack(fill="x", padx=10, pady=(10, 2))
         tk.Label(inner, text=message, fg="#cccccc", bg="#333333", font=("TkDefaultFont", 9),
                  anchor="nw", justify="left").pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        # Ensure it shows up above everything on macOS
+        toast.lift()
+        toast.update()
 
         # Auto-close after 3 seconds
         self.after(3000, toast.destroy)

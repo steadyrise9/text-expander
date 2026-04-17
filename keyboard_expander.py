@@ -61,30 +61,49 @@ def on_profile_changed() -> None:
 # ── action handlers ──────────────────────────────────────────────────────────
 
 def _get_foreground_window():
-    """Return the HWND of the currently focused window (Windows)."""
-    try:
-        return ctypes.windll.user32.GetForegroundWindow()
-    except Exception:
-        return None
+    """Return the active window identifier (HWND on Windows, App Name on Mac)."""
+    if sys.platform == "darwin":
+        try:
+            res = subprocess.run(
+                ["osascript", "-e", 'tell application "System Events" to name of first process whose frontmost is true'],
+                capture_output=True, text=True, check=False
+            )
+            return res.stdout.strip()
+        except Exception:
+            return None
+    elif sys.platform == "win32":
+        try:
+            return ctypes.windll.user32.GetForegroundWindow()
+        except Exception:
+            return None
+    return None
 
 
-def _focus_window(hwnd) -> None:
+def _focus_window(handle) -> None:
     """Restore focus to a previously captured window handle."""
-    if not hwnd:
+    if not handle:
         return
-    try:
-        user32 = ctypes.windll.user32
-        # Attach input threads so SetForegroundWindow is allowed
-        current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
-        target_pid = ctypes.c_ulong(0)
-        target_tid = user32.GetWindowThreadProcessId(hwnd, ctypes.byref(target_pid))
-        user32.AttachThreadInput(current_tid, target_tid, True)
-        user32.SetForegroundWindow(hwnd)
-        user32.BringWindowToTop(hwnd)
-        user32.AttachThreadInput(current_tid, target_tid, False)
-        time.sleep(0.05)
-    except Exception:
-        pass
+    if sys.platform == "darwin":
+        try:
+            # Use AppleScript to reactivate the application
+            subprocess.run(["osascript", "-e", f'tell application "{handle}" to activate'], check=False)
+            time.sleep(0.1)
+        except Exception:
+            pass
+    elif sys.platform == "win32":
+        try:
+            user32 = ctypes.windll.user32
+            # Attach input threads so SetForegroundWindow is allowed
+            current_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+            target_pid = ctypes.c_ulong(0)
+            target_tid = user32.GetWindowThreadProcessId(handle, ctypes.byref(target_pid))
+            user32.AttachThreadInput(current_tid, target_tid, True)
+            user32.SetForegroundWindow(handle)
+            user32.BringWindowToTop(handle)
+            user32.AttachThreadInput(current_tid, target_tid, False)
+            time.sleep(0.05)
+        except Exception:
+            pass
 
 
 def _human_type(text: str, hwnd=None) -> None:
@@ -115,7 +134,9 @@ def _paste_to_window(text: str, hwnd) -> None:
     pyperclip.copy(text)
     _focus_window(hwnd)
     time.sleep(0.05)
-    with _controller.pressed(Key.ctrl):
+    
+    paste_key = Key.cmd if sys.platform == "darwin" else Key.ctrl
+    with _controller.pressed(paste_key):
         _controller.tap('v')
     time.sleep(0.1)
     pyperclip.copy(prev_clipboard)
@@ -216,7 +237,9 @@ def _do_expand(trigger: str, expansion: str) -> None:
     prev_clipboard = pyperclip.paste()
     pyperclip.copy(expansion)
     time.sleep(0.05)
-    with _controller.pressed(Key.ctrl):
+    
+    paste_key = Key.cmd if sys.platform == "darwin" else Key.ctrl
+    with _controller.pressed(paste_key):
         _controller.tap('v')
     time.sleep(0.1)
     pyperclip.copy(prev_clipboard)
